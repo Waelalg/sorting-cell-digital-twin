@@ -19,7 +19,7 @@
       border-radius: 12px;
       padding: 24px 28px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-      min-width: 320px;
+      min-width: 340px;
     }
     h1 {
       font-size: 1.4rem;
@@ -61,6 +61,10 @@
       background: rgba(148, 163, 184, 0.2);
       color: #e5e7eb;
     }
+    .status-blocked {
+      background: rgba(251, 191, 36, 0.25);
+      color: #facc15;
+    }
     .status-error {
       background: rgba(248, 113, 113, 0.25);
       color: #fecaca;
@@ -74,6 +78,19 @@
       color: #fecaca;
       margin-top: 6px;
       font-size: 0.8rem;
+    }
+    .health {
+      margin-top: 8px;
+      font-size: 0.85rem;
+    }
+    .health-ok {
+      color: #bbf7d0;
+    }
+    .health-warn {
+      color: #facc15;
+    }
+    .health-error {
+      color: #fecaca;
     }
   </style>
 </head>
@@ -104,6 +121,13 @@
       </div>
     </div>
 
+    <div class="health">
+      <span class="label">Health</span><br />
+      <span id="health-text" class="health-ok">
+        No anomaly detected
+      </span>
+    </div>
+
     <div class="footer">
       Updating every <strong>1s</strong> from
       <code>http://127.0.0.1:8000/state</code>
@@ -120,11 +144,13 @@
     const totalRejectedEl = document.getElementById("total-rejected");
     const partsInSystemEl = document.getElementById("parts-in-system");
     const errorEl = document.getElementById("error");
+    const healthTextEl = document.getElementById("health-text");
 
     function updateStatusStyle(state) {
       cellStatePill.classList.remove(
         "status-running",
         "status-idle",
+        "status-blocked",
         "status-error"
       );
 
@@ -132,8 +158,26 @@
         cellStatePill.classList.add("status-running");
       } else if (state === "idle") {
         cellStatePill.classList.add("status-idle");
+      } else if (state === "blocked") {
+        cellStatePill.classList.add("status-blocked");
       } else {
         cellStatePill.classList.add("status-error");
+      }
+    }
+
+    function updateHealth(cellState, errorFlag) {
+      // reset classes
+      healthTextEl.classList.remove("health-ok", "health-warn", "health-error");
+
+      if (errorFlag) {
+        healthTextEl.textContent = "Anomaly detected (ERROR state)";
+        healthTextEl.classList.add("health-error");
+      } else if (cellState === "blocked") {
+        healthTextEl.textContent = "Cell appears BLOCKED (no recent activity)";
+        healthTextEl.classList.add("health-warn");
+      } else {
+        healthTextEl.textContent = "No anomaly detected";
+        healthTextEl.classList.add("health-ok");
       }
     }
 
@@ -148,8 +192,11 @@
         errorEl.textContent = "";
 
         const cellState = data.cell_state || "unknown";
+        const errorFlag = data.error ?? false;
+
         cellStateText.textContent = cellState.toUpperCase();
         updateStatusStyle(cellState);
+        updateHealth(cellState, errorFlag);
 
         totalProcessedEl.textContent = data.total_processed ?? 0;
         totalRejectedEl.textContent = data.total_rejected ?? 0;
