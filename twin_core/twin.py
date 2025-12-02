@@ -18,7 +18,7 @@ class DigitalTwin:
 
     - Subscribes to events from the EventBus.
     - Updates its internal TwinState.
-    - Exposes methods to query the current state (for APIs, dashboards, etc.).
+    - Exposes methods to query state, parts, and KPIs.
     """
 
     def __init__(self, bus: EventBus, blocked_threshold: float = 5.0) -> None:
@@ -51,3 +51,8 @@ class DigitalTwin:
         """Return a thread-safe list of part states."""
         async with self._lock:
             return self._state.parts_snapshot()
+
+    async def get_metrics_snapshot(self) -> dict:
+        """Return a thread-safe snapshot of KPIs / metrics."""
+        async with self._lock:
+            return self._state.metrics_snapshot()

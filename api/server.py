@@ -68,3 +68,12 @@ async def get_parts():
     """
     parts = await twin.get_parts_snapshot()
     return parts
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """
+    Return high-level KPIs: throughput, reject rate, observation window.
+    """
+    metrics = await twin.get_metrics_snapshot()
+    return metrics

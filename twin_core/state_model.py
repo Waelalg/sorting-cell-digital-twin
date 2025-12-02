@@ -23,7 +23,7 @@ class PartStatus(Enum):
     CREATED = "created"
     ON_CONVEYOR = "on_conveyor"
     AT_SENSOR = "at_sensor"
-    READY_TO_SORT = "ready_to_sort"   # NEW: required to accept PART_SORTED
+    READY_TO_SORT = "ready_to_sort"
     SORTED_OK = "sorted_ok"
     SORTED_NOK = "sorted_nok"
 
@@ -39,9 +39,11 @@ class Part:
 @dataclass
 class TwinState:
     """
-    Digital Twin internal DES-style state with anomaly detection.
+    Digital Twin internal DES-style state with anomaly detection and metrics.
+
     - BLOCKED when no events for too long
     - ERROR when invalid event sequence detected
+    - Metrics: throughput, reject rate, observation window
     """
 
     cell_state: CellState = CellState.IDLE
@@ -50,8 +52,9 @@ class TwinState:
     total_processed: int = 0
     total_rejected: int = 0
 
-    # Anomaly detection fields
+    # Anomaly + time tracking
     last_event_time: float = 0.0
+    system_start_time: float = 0.0
     blocked_threshold: float = 5.0
     error_flag: bool = False
 
@@ -81,6 +84,8 @@ class TwinState:
 
     def check_blocked(self, current_time: float):
         """Detect lack of activity → BLOCKED state."""
+        if self.last_event_time == 0.0:
+            return
         if (current_time - self.last_event_time) > self.blocked_threshold:
             if self.cell_state != CellState.BLOCKED:
                 logger.warning(
@@ -97,9 +102,10 @@ class TwinState:
         # Update last received activity time
         self.last_event_time = t
 
-        # First event → running
+        # First event → running + set system start time
         if self.cell_state == CellState.IDLE:
             self.cell_state = CellState.RUNNING
+            self.system_start_time = t
 
         part_id = data.get("part_id")
         part = self._get_or_create_part(part_id, t)
@@ -119,12 +125,15 @@ class TwinState:
         # Apply transitions
         if etype == EventType.PART_ARRIVED:
             part.status = PartStatus.ON_CONVEYOR
+            part.last_timestamp = t
 
         elif etype == EventType.SENSOR_READ:
             part.status = PartStatus.AT_SENSOR
+            part.last_timestamp = t
 
         elif etype == EventType.ACTUATOR_TRIGGERED:
-            part.status = PartStatus.READY_TO_SORT   # CRITICAL FIX
+            part.status = PartStatus.READY_TO_SORT
+            part.last_timestamp = t
 
         elif etype == EventType.PART_SORTED:
             outcome = data["outcome"]
@@ -136,6 +145,8 @@ class TwinState:
                 self.total_processed += 1
                 self.total_rejected += 1
 
+            part.last_timestamp = t
+
             logger.info(
                 "PART_SORTED: part=%s outcome=%s processed=%d rejected=%d",
                 part_id,
@@ -144,8 +155,11 @@ class TwinState:
                 self.total_rejected,
             )
 
-        # Check if BLOCKED
+        # Check if BLOCKED (based on event time)
         self.check_blocked(t)
+
+    def get_part(self, part_id: str) -> Optional[Part]:
+        return self.parts.get(part_id)
 
     def parts_snapshot(self) -> list[dict]:
         """
@@ -169,4 +183,34 @@ class TwinState:
             "total_rejected": self.total_rejected,
             "parts_in_system": len(self.parts),
             "error": self.error_flag,
+        }
+
+    def metrics_snapshot(self) -> dict:
+        """
+        Compute high-level KPIs:
+        - throughput: parts / second over observation window
+        - reject_rate: ratio of rejected parts
+        - observation_window: duration between first and last event
+        """
+        if self.system_start_time == 0.0 or self.last_event_time <= self.system_start_time:
+            observation_window = 0.0
+        else:
+            observation_window = self.last_event_time - self.system_start_time
+
+        if observation_window > 0.0:
+            throughput = self.total_processed / observation_window
+        else:
+            throughput = 0.0
+
+        if self.total_processed > 0:
+            reject_rate = self.total_rejected / self.total_processed
+        else:
+            reject_rate = 0.0
+
+        return {
+            "total_processed": self.total_processed,
+            "total_rejected": self.total_rejected,
+            "reject_rate": reject_rate,
+            "throughput": throughput,
+            "observation_window": observation_window,
         }

@@ -21,7 +21,7 @@
       padding: 24px 28px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
       min-width: 360px;
-      max-width: 720px;
+      max-width: 780px;
     }
     h1 {
       font-size: 1.4rem;
@@ -34,7 +34,7 @@
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px 18px;
       margin-bottom: 12px;
     }
@@ -136,7 +136,7 @@
 <body>
   <div class="card">
     <h1>Sorting Cell Digital Twin</h1>
-    <div class="subtitle">Live state from FastAPI backend</div>
+    <div class="subtitle">Live state, KPIs, and part lifecycle from FastAPI backend</div>
 
     <div style="margin-bottom: 12px;">
       <span class="label">Cell state</span><br />
@@ -157,6 +157,18 @@
       <div>
         <div class="label">Parts in system</div>
         <div class="value" id="parts-in-system">0</div>
+      </div>
+      <div>
+        <div class="label">Throughput (parts/s)</div>
+        <div class="value" id="throughput">0.00</div>
+      </div>
+      <div>
+        <div class="label">Reject rate (%)</div>
+        <div class="value" id="reject-rate">0.0</div>
+      </div>
+      <div>
+        <div class="label">Observation window (s)</div>
+        <div class="value" id="obs-window">0.0</div>
       </div>
     </div>
 
@@ -182,7 +194,7 @@
 
     <div class="footer">
       Updating every <strong>1s</strong> from
-      <code>http://127.0.0.1:8000/state</code> and <code>/parts</code>
+      <code>/state</code>, <code>/metrics</code> and <code>/parts</code>
     </div>
     <div id="error" class="error"></div>
   </div>
@@ -190,12 +202,17 @@
   <script>
     const API_STATE = "http://127.0.0.1:8000/state";
     const API_PARTS = "http://127.0.0.1:8000/parts";
+    const API_METRICS = "http://127.0.0.1:8000/metrics";
 
     const cellStateText = document.getElementById("cell-state-text");
     const cellStatePill = document.getElementById("cell-state-pill");
     const totalProcessedEl = document.getElementById("total-processed");
     const totalRejectedEl = document.getElementById("total-rejected");
     const partsInSystemEl = document.getElementById("parts-in-system");
+    const throughputEl = document.getElementById("throughput");
+    const rejectRateEl = document.getElementById("reject-rate");
+    const obsWindowEl = document.getElementById("obs-window");
+
     const errorEl = document.getElementById("error");
     const healthTextEl = document.getElementById("health-text");
     const partsBody = document.getElementById("parts-body");
@@ -249,21 +266,20 @@
       return span;
     }
 
-    async function fetchState() {
-      const res = await fetch(API_STATE);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return await res.json();
-    }
-
-    async function fetchParts() {
-      const res = await fetch(API_PARTS);
-      if (!res.ok) throw new Error("HTTP " + res.status);
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(url + " -> HTTP " + res.status);
       return await res.json();
     }
 
     async function refresh() {
       try {
-        const [state, parts] = await Promise.all([fetchState(), fetchParts()]);
+        const [state, metrics, parts] = await Promise.all([
+          fetchJson(API_STATE),
+          fetchJson(API_METRICS),
+          fetchJson(API_PARTS),
+        ]);
+
         errorEl.textContent = "";
 
         const cellState = state.cell_state || "unknown";
@@ -276,6 +292,10 @@
         totalProcessedEl.textContent = state.total_processed ?? 0;
         totalRejectedEl.textContent = state.total_rejected ?? 0;
         partsInSystemEl.textContent = state.parts_in_system ?? 0;
+
+        throughputEl.textContent = (metrics.throughput ?? 0).toFixed(3);
+        rejectRateEl.textContent = ((metrics.reject_rate ?? 0) * 100).toFixed(1);
+        obsWindowEl.textContent = (metrics.observation_window ?? 0).toFixed(2);
 
         // sort parts by last_timestamp descending and take last 10
         const sortedParts = [...parts].sort(
@@ -302,7 +322,7 @@
           partsBody.appendChild(tr);
         }
       } catch (err) {
-        errorEl.textContent = "Failed to fetch state/parts: " + err;
+        errorEl.textContent = "Failed to fetch state/metrics/parts: " + err;
       }
     }
 
