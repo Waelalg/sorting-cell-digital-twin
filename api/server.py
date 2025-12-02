@@ -9,9 +9,13 @@ from twin_core.event_bus import EventBus
 from twin_core.twin import DigitalTwin
 from physical_sim.cell_sim import SortingCellSimulator
 from common.logging_config import configure_logging
+from common.config import load_config
 
 # Configure logging once for API mode
 configure_logging()
+
+# Load configuration for API mode
+config = load_config()
 
 app = FastAPI(
     title="Sorting Cell Digital Twin API",
@@ -31,8 +35,8 @@ app.add_middleware(
 # --- Core components shared by the app ---
 
 bus = EventBus()
-twin = DigitalTwin(bus)
-sim = SortingCellSimulator(bus)
+twin = DigitalTwin(bus, blocked_threshold=config.twin.blocked_threshold)
+sim = SortingCellSimulator(bus, sim_config=config.simulation)
 
 
 @app.on_event("startup")

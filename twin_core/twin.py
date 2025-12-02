@@ -21,16 +21,20 @@ class DigitalTwin:
     - Exposes methods to query the current state (for APIs, dashboards, etc.).
     """
 
-    def __init__(self, bus: EventBus) -> None:
+    def __init__(self, bus: EventBus, blocked_threshold: float = 5.0) -> None:
         self._bus = bus
-        self._state = TwinState()
+        # Inject blocked_threshold into state
+        self._state = TwinState(blocked_threshold=blocked_threshold)
         # Register our async handler to the bus
         self._bus.subscribe(self._handle_event)
 
         # This lock protects state reads/writes if needed
         self._lock = asyncio.Lock()
 
-        logger.info("DigitalTwin initialized and subscribed to EventBus")
+        logger.info(
+            "DigitalTwin initialized (blocked_threshold=%.2f) and subscribed to EventBus",
+            blocked_threshold,
+        )
 
     async def _handle_event(self, event: Event) -> None:
         """Callback invoked by the EventBus for each new event."""

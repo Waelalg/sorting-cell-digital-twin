@@ -1,0 +1,9 @@
+simulation:
+  part_interarrival: [0.5, 1.5]   # seconds between parts
+  sensor_delay: [0.1, 0.3]        # sensor processing delay
+  actuator_delay: [0.1, 0.2]      # actuator delay
+  ok_probability: 0.8             # probability a part is OK
+
+twin:
+  blocked_threshold: 5.0          # seconds without events => BLOCKED
+

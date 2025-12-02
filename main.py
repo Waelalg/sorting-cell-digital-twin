@@ -6,16 +6,20 @@ from twin_core.event_bus import EventBus
 from twin_core.twin import DigitalTwin
 from physical_sim.cell_sim import SortingCellSimulator
 from common.logging_config import configure_logging
+from common.config import load_config
 
 
 async def main_async() -> None:
-    # Configure logging once for the CLI mode
+    # Configure logging
     configure_logging()
 
-    # Create core components
+    # Load configuration
+    config = load_config()
+
+    # Create core components with config
     bus = EventBus()
-    twin = DigitalTwin(bus)
-    sim = SortingCellSimulator(bus)
+    twin = DigitalTwin(bus, blocked_threshold=config.twin.blocked_threshold)
+    sim = SortingCellSimulator(bus, sim_config=config.simulation)
 
     # Start the event bus loop
     bus_task = asyncio.create_task(bus.run())
