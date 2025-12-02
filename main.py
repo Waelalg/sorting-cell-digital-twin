@@ -5,9 +5,13 @@ import asyncio
 from twin_core.event_bus import EventBus
 from twin_core.twin import DigitalTwin
 from physical_sim.cell_sim import SortingCellSimulator
+from common.logging_config import configure_logging
 
 
 async def main_async() -> None:
+    # Configure logging once for the CLI mode
+    configure_logging()
+
     # Create core components
     bus = EventBus()
     twin = DigitalTwin(bus)

@@ -2,10 +2,13 @@
 
 import asyncio
 import random
+import logging
 from typing import Tuple
 
 from common.events import Event, EventType
 from twin_core.event_bus import EventBus
+
+logger = logging.getLogger(__name__)
 
 
 class SortingCellSimulator:
@@ -35,12 +38,18 @@ class SortingCellSimulator:
         self.ok_probability = ok_probability
         self._part_counter = 0
 
+        logger.info(
+            "SortingCellSimulator initialized "
+            f"(interarrival={part_interarrival}, ok_prob={ok_probability})"
+        )
+
     async def run(self) -> None:
         """
         Main loop: generates parts at random intervals and
         launches a processing coroutine for each part.
         """
         loop = asyncio.get_running_loop()
+        logger.info("SortingCellSimulator run loop started")
 
         while True:
             # Wait for the next part to arrive
@@ -50,6 +59,8 @@ class SortingCellSimulator:
             part_id = f"P{self._part_counter}"
             self._part_counter += 1
             t = loop.time()
+
+            logger.info("PART_ARRIVED part_id=%s t=%.3f", part_id, t)
 
             # Emit PART_ARRIVED event
             event = Event(
@@ -76,6 +87,13 @@ class SortingCellSimulator:
         is_ok = random.random() < self.ok_probability
         sensor_result = "ok" if is_ok else "nok"
 
+        logger.info(
+            "SENSOR_READ part_id=%s result=%s t=%.3f",
+            part_id,
+            sensor_result,
+            loop.time(),
+        )
+
         e_sensor = Event(
             type=EventType.SENSOR_READ,
             timestamp=loop.time(),
@@ -87,6 +105,13 @@ class SortingCellSimulator:
         await asyncio.sleep(random.uniform(*self.actuator_delay))
         decision = "ok_bin" if is_ok else "reject_bin"
 
+        logger.info(
+            "ACTUATOR_TRIGGERED part_id=%s decision=%s t=%.3f",
+            part_id,
+            decision,
+            loop.time(),
+        )
+
         e_act = Event(
             type=EventType.ACTUATOR_TRIGGERED,
             timestamp=loop.time(),
@@ -95,9 +120,18 @@ class SortingCellSimulator:
         await self._bus.publish(e_act)
 
         # Final outcome
+        outcome = "ok" if is_ok else "nok"
+
+        logger.info(
+            "PART_SORTED part_id=%s outcome=%s t=%.3f",
+            part_id,
+            outcome,
+            loop.time(),
+        )
+
         e_sorted = Event(
             type=EventType.PART_SORTED,
             timestamp=loop.time(),
-            data={"part_id": part_id, "outcome": "ok" if is_ok else "nok"},
+            data={"part_id": part_id, "outcome": outcome},
         )
         await self._bus.publish(e_sorted)

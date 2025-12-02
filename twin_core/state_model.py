@@ -3,8 +3,11 @@
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Dict, Optional
+import logging
 
 from common.events import Event, EventType
+
+logger = logging.getLogger(__name__)
 
 
 class CellState(Enum):
@@ -64,6 +67,13 @@ class TwinState:
         data = event.data
         t = event.timestamp
 
+        logger.debug(
+            "Handling event type=%s data=%s t=%.3f",
+            etype.value,
+            data,
+            t,
+        )
+
         # By default, if we receive events, we consider the cell "running"
         if self.cell_state == CellState.IDLE:
             self.cell_state = CellState.RUNNING
@@ -80,9 +90,7 @@ class TwinState:
             part = self._get_or_create_part(part_id, t)
             part.status = PartStatus.AT_SENSOR
             part.last_timestamp = t
-
-            # We don't yet know the final bin, but we know quality
-            # (this could be extended later).
+            # we could later store result if needed
 
         elif etype == EventType.ACTUATOR_TRIGGERED:
             part_id: str = data["part_id"]
@@ -110,7 +118,16 @@ class TwinState:
                 self.total_processed += 1
                 self.total_rejected += 1
 
-        # Here we could add logic to detect BLOCKED / ERROR states later.
+            logger.info(
+                "TwinState PART_SORTED part_id=%s outcome=%s "
+                "total_processed=%d total_rejected=%d",
+                part_id,
+                outcome,
+                self.total_processed,
+                self.total_rejected,
+            )
+
+        # (Later we can add logic to detect BLOCKED / ERROR states)
 
     def get_part(self, part_id: str) -> Optional[Part]:
         return self.parts.get(part_id)
