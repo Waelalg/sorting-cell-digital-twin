@@ -23,13 +23,14 @@ class PartStatus(Enum):
     CREATED = "created"
     ON_CONVEYOR = "on_conveyor"
     AT_SENSOR = "at_sensor"
+    READY_TO_SORT = "ready_to_sort"   # NEW: required to accept PART_SORTED
     SORTED_OK = "sorted_ok"
     SORTED_NOK = "sorted_nok"
 
 
 @dataclass
 class Part:
-    """Simplified representation of a part processed by the cell."""
+    """Representation of a part inside the system."""
     part_id: str
     status: PartStatus
     last_timestamp: float
@@ -38,16 +39,21 @@ class Part:
 @dataclass
 class TwinState:
     """
-    Internal state of the Digital Twin.
-
-    This is a DES-like abstraction updated when events are received
-    from the physical (or simulated) cell.
+    Digital Twin internal DES-style state with anomaly detection.
+    - BLOCKED when no events for too long
+    - ERROR when invalid event sequence detected
     """
+
     cell_state: CellState = CellState.IDLE
     parts: Dict[str, Part] = field(default_factory=dict)
 
     total_processed: int = 0
     total_rejected: int = 0
+
+    # Anomaly detection fields
+    last_event_time: float = 0.0
+    blocked_threshold: float = 5.0
+    error_flag: bool = False
 
     def _get_or_create_part(self, part_id: str, timestamp: float) -> Part:
         if part_id not in self.parts:
@@ -58,58 +64,70 @@ class TwinState:
             )
         return self.parts[part_id]
 
+    def validate_sequence(self, part: Part, event_type: EventType) -> bool:
+        """
+        Rule-based validation of event ordering.
+        This ensures the twin mirrors a realistic CPPS workflow.
+        """
+        valid_flow = {
+            PartStatus.CREATED:        [EventType.PART_ARRIVED],
+            PartStatus.ON_CONVEYOR:    [EventType.SENSOR_READ],
+            PartStatus.AT_SENSOR:      [EventType.ACTUATOR_TRIGGERED],
+            PartStatus.READY_TO_SORT:  [EventType.PART_SORTED],
+            PartStatus.SORTED_OK:      [],
+            PartStatus.SORTED_NOK:     [],
+        }
+        return event_type in valid_flow.get(part.status, [])
+
+    def check_blocked(self, current_time: float):
+        """Detect lack of activity → BLOCKED state."""
+        if (current_time - self.last_event_time) > self.blocked_threshold:
+            if self.cell_state != CellState.BLOCKED:
+                logger.warning(
+                    "CELL BLOCKED: No events for %.2fs",
+                    current_time - self.last_event_time,
+                )
+            self.cell_state = CellState.BLOCKED
+
     def handle_event(self, event: Event) -> None:
-        """
-        Update the twin's internal state based on an incoming event.
-        This is the core DES-style update logic.
-        """
         etype = event.type
         data = event.data
         t = event.timestamp
 
-        logger.debug(
-            "Handling event type=%s data=%s t=%.3f",
-            etype.value,
-            data,
-            t,
-        )
+        # Update last received activity time
+        self.last_event_time = t
 
-        # By default, if we receive events, we consider the cell "running"
+        # First event → running
         if self.cell_state == CellState.IDLE:
             self.cell_state = CellState.RUNNING
 
+        part_id = data.get("part_id")
+        part = self._get_or_create_part(part_id, t)
+
+        # Validate event sequence
+        if not self.validate_sequence(part, etype):
+            self.cell_state = CellState.ERROR
+            self.error_flag = True
+            logger.error(
+                "INVALID EVENT ORDER: part=%s status=%s event=%s",
+                part_id,
+                part.status.value,
+                etype.value,
+            )
+            return
+
+        # Apply transitions
         if etype == EventType.PART_ARRIVED:
-            part_id: str = data["part_id"]
-            part = self._get_or_create_part(part_id, t)
             part.status = PartStatus.ON_CONVEYOR
-            part.last_timestamp = t
 
         elif etype == EventType.SENSOR_READ:
-            part_id: str = data["part_id"]
-            result: str = data["result"]  # "ok" or "nok"
-            part = self._get_or_create_part(part_id, t)
             part.status = PartStatus.AT_SENSOR
-            part.last_timestamp = t
-            # we could later store result if needed
 
         elif etype == EventType.ACTUATOR_TRIGGERED:
-            part_id: str = data["part_id"]
-            decision: str = data["decision"]  # "ok_bin" or "reject_bin"
-            part = self._get_or_create_part(part_id, t)
-            part.last_timestamp = t
-
-            if decision == "ok_bin":
-                part.status = PartStatus.SORTED_OK
-            else:
-                part.status = PartStatus.SORTED_NOK
+            part.status = PartStatus.READY_TO_SORT   # CRITICAL FIX
 
         elif etype == EventType.PART_SORTED:
-            part_id: str = data["part_id"]
-            outcome: str = data["outcome"]  # "ok" or "nok"
-
-            part = self._get_or_create_part(part_id, t)
-            part.last_timestamp = t
-
+            outcome = data["outcome"]
             if outcome == "ok":
                 part.status = PartStatus.SORTED_OK
                 self.total_processed += 1
@@ -119,28 +137,22 @@ class TwinState:
                 self.total_rejected += 1
 
             logger.info(
-                "TwinState PART_SORTED part_id=%s outcome=%s "
-                "total_processed=%d total_rejected=%d",
+                "PART_SORTED: part=%s outcome=%s processed=%d rejected=%d",
                 part_id,
                 outcome,
                 self.total_processed,
                 self.total_rejected,
             )
 
-        # (Later we can add logic to detect BLOCKED / ERROR states)
-
-    def get_part(self, part_id: str) -> Optional[Part]:
-        return self.parts.get(part_id)
+        # Check if BLOCKED
+        self.check_blocked(t)
 
     def snapshot(self) -> dict:
-        """
-        Return a serializable snapshot of the current twin state.
-
-        Useful for APIs and dashboards.
-        """
+        """Return a JSON-serializable state."""
         return {
             "cell_state": self.cell_state.value,
             "total_processed": self.total_processed,
             "total_rejected": self.total_rejected,
             "parts_in_system": len(self.parts),
+            "error": self.error_flag,
         }
