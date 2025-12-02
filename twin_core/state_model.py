@@ -147,6 +147,20 @@ class TwinState:
         # Check if BLOCKED
         self.check_blocked(t)
 
+    def parts_snapshot(self) -> list[dict]:
+        """
+        Return a list of parts with their status and last timestamp.
+        Useful for monitoring / dashboards.
+        """
+        return [
+            {
+                "part_id": part.part_id,
+                "status": part.status.value,
+                "last_timestamp": part.last_timestamp,
+            }
+            for part in self.parts.values()
+        ]
+
     def snapshot(self) -> dict:
         """Return a JSON-serializable state."""
         return {

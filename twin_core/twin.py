@@ -42,3 +42,8 @@ class DigitalTwin:
         """Return a thread-safe snapshot of the twin state."""
         async with self._lock:
             return self._state.snapshot()
+
+    async def get_parts_snapshot(self) -> list[dict]:
+        """Return a thread-safe list of part states."""
+        async with self._lock:
+            return self._state.parts_snapshot()

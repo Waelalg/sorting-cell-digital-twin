@@ -9,17 +9,19 @@
       background: #0f172a;
       color: #e5e7eb;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       min-height: 100vh;
       margin: 0;
+      padding-top: 40px;
     }
     .card {
       background: #020617;
       border-radius: 12px;
       padding: 24px 28px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-      min-width: 340px;
+      min-width: 360px;
+      max-width: 720px;
     }
     h1 {
       font-size: 1.4rem;
@@ -92,6 +94,43 @@
     .health-error {
       color: #fecaca;
     }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 0.8rem;
+    }
+    th, td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #1f2933;
+      text-align: left;
+    }
+    th {
+      color: #9ca3af;
+      font-weight: 500;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .status-pill-small {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+    }
+    .st-ok {
+      background: rgba(34, 197, 94, 0.15);
+      color: #bbf7d0;
+    }
+    .st-nok {
+      background: rgba(248, 113, 113, 0.25);
+      color: #fecaca;
+    }
+    .st-intermediate {
+      background: rgba(59, 130, 246, 0.18);
+      color: #bfdbfe;
+    }
   </style>
 </head>
 <body>
@@ -128,15 +167,29 @@
       </span>
     </div>
 
+    <table>
+      <thead>
+        <tr>
+          <th>Part ID</th>
+          <th>Status</th>
+          <th>Last timestamp</th>
+        </tr>
+      </thead>
+      <tbody id="parts-body">
+        <!-- rows inserted by JS -->
+      </tbody>
+    </table>
+
     <div class="footer">
       Updating every <strong>1s</strong> from
-      <code>http://127.0.0.1:8000/state</code>
+      <code>http://127.0.0.1:8000/state</code> and <code>/parts</code>
     </div>
     <div id="error" class="error"></div>
   </div>
 
   <script>
-    const API_URL = "http://127.0.0.1:8000/state";
+    const API_STATE = "http://127.0.0.1:8000/state";
+    const API_PARTS = "http://127.0.0.1:8000/parts";
 
     const cellStateText = document.getElementById("cell-state-text");
     const cellStatePill = document.getElementById("cell-state-pill");
@@ -145,6 +198,7 @@
     const partsInSystemEl = document.getElementById("parts-in-system");
     const errorEl = document.getElementById("error");
     const healthTextEl = document.getElementById("health-text");
+    const partsBody = document.getElementById("parts-body");
 
     function updateStatusStyle(state) {
       cellStatePill.classList.remove(
@@ -166,7 +220,6 @@
     }
 
     function updateHealth(cellState, errorFlag) {
-      // reset classes
       healthTextEl.classList.remove("health-ok", "health-warn", "health-error");
 
       if (errorFlag) {
@@ -181,33 +234,80 @@
       }
     }
 
-    async function fetchState() {
-      try {
-        const res = await fetch(API_URL);
-        if (!res.ok) {
-          throw new Error("HTTP " + res.status);
-        }
-        const data = await res.json();
+    function statusPillSmall(status) {
+      const span = document.createElement("span");
+      span.classList.add("status-pill-small");
+      const s = status.toLowerCase();
+      if (s === "sorted_ok") {
+        span.classList.add("st-ok");
+      } else if (s === "sorted_nok") {
+        span.classList.add("st-nok");
+      } else {
+        span.classList.add("st-intermediate");
+      }
+      span.textContent = status.toUpperCase();
+      return span;
+    }
 
+    async function fetchState() {
+      const res = await fetch(API_STATE);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return await res.json();
+    }
+
+    async function fetchParts() {
+      const res = await fetch(API_PARTS);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return await res.json();
+    }
+
+    async function refresh() {
+      try {
+        const [state, parts] = await Promise.all([fetchState(), fetchParts()]);
         errorEl.textContent = "";
 
-        const cellState = data.cell_state || "unknown";
-        const errorFlag = data.error ?? false;
+        const cellState = state.cell_state || "unknown";
+        const errorFlag = state.error ?? false;
 
         cellStateText.textContent = cellState.toUpperCase();
         updateStatusStyle(cellState);
         updateHealth(cellState, errorFlag);
 
-        totalProcessedEl.textContent = data.total_processed ?? 0;
-        totalRejectedEl.textContent = data.total_rejected ?? 0;
-        partsInSystemEl.textContent = data.parts_in_system ?? 0;
+        totalProcessedEl.textContent = state.total_processed ?? 0;
+        totalRejectedEl.textContent = state.total_rejected ?? 0;
+        partsInSystemEl.textContent = state.parts_in_system ?? 0;
+
+        // sort parts by last_timestamp descending and take last 10
+        const sortedParts = [...parts].sort(
+          (a, b) => b.last_timestamp - a.last_timestamp
+        ).slice(0, 10);
+
+        partsBody.innerHTML = "";
+        for (const p of sortedParts) {
+          const tr = document.createElement("tr");
+
+          const tdId = document.createElement("td");
+          tdId.textContent = p.part_id;
+
+          const tdStatus = document.createElement("td");
+          tdStatus.appendChild(statusPillSmall(p.status));
+
+          const tdTs = document.createElement("td");
+          tdTs.textContent = p.last_timestamp.toFixed(3);
+
+          tr.appendChild(tdId);
+          tr.appendChild(tdStatus);
+          tr.appendChild(tdTs);
+
+          partsBody.appendChild(tr);
+        }
       } catch (err) {
-        errorEl.textContent = "Failed to fetch state: " + err;
+        errorEl.textContent = "Failed to fetch state/parts: " + err;
       }
     }
 
-    fetchState();
-    setInterval(fetchState, 1000);
+    refresh();
+    setInterval(refresh, 1000);
   </script>
 </body>
 </html>

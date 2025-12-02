@@ -54,3 +54,13 @@ async def get_state():
     """
     snapshot = await twin.get_state_snapshot()
     return snapshot
+
+
+@app.get("/parts")
+async def get_parts():
+    """
+    Return a list of parts currently known by the Digital Twin.
+    Each entry contains: part_id, status, last_timestamp.
+    """
+    parts = await twin.get_parts_snapshot()
+    return parts
