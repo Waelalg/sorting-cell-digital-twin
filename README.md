@@ -1,181 +1,132 @@
-This project implements a **Digital Twin** of an automated sorting cell  
-(conveyor + sensor + actuator) using **Python, asyncio, FastAPI, and a small web dashboard**.
+# Sorting Cell Digital Twin 🔧
 
-The goal is to demonstrate:
-
-- A **simulated Cyber-Physical Production System (CPPS)**.
-- A **Digital Twin core** receiving events and maintaining a synchronized state.
-- **Anomaly detection** (blocked / error state).
-- **KPIs**: throughput, reject rate, observation window.
-- A **REST API + HTML dashboard** for monitoring and decision support.
+A **Digital Twin** of an automated sorting cell (conveyor → sensor → actuator → sorter), implemented in **Python + asyncio + FastAPI**, with a **live dashboard**.  
+This project simulates a Cyber-Physical Production System (CPPS), tracks state and KPIs, and exposes a clean REST API + UI for monitoring and analysis.
 
 ---
 
-## 🧱 Architecture Overview
+## ✅ Why this project matters
 
-Main components:
+- Demonstrates **real-time synchronization** between a simulated physical system and its Digital Twin  
+- Implements **anomaly detection** (blocked conveyor, invalid event sequences)  
+- Computes **KPIs** (throughput, reject rate, processing latency) to assess system performance  
+- Provides a **REST API + dashboard** to expose live data — useful for research, demonstration, or integration  
 
-- `physical_sim/`
-  - `SortingCellSimulator`: async simulation of the physical sorting cell.
-- `twin_core/`
-  - `EventBus`: asynchronous event dispatcher.
-  - `TwinState`: DES-style model of the cell (parts, counters, status).
-  - `DigitalTwin`: core logic + anomaly detection + KPIs.
-- `api/`
-  - FastAPI server exposing the Digital Twin via `/state`, `/metrics`, `/parts`.
-- `dashboard/`
-  - Minimal HTML/JS dashboard polling the API every 1s.
+---
 
-Data flow:
+## 🚀 Quick Start
 
-```mermaid
-flowchart LR
-    Sim[SortingCellSimulator\n(physical_sim)] -->|Events| Bus[EventBus\n(twin_core)]
-    Bus --> Twin[DigitalTwin\n+ TwinState]
-    Twin -->|/state\n/metrics\n/parts| API[FastAPI server]
-    API --> Dashboard[HTML Dashboard\n(JavaScript)]
-
-
-Event sequence for one part:
-
-sequenceDiagram
-    participant Sim as Simulator
-    participant Bus as EventBus
-    participant Twin as DigitalTwin
-
-    Sim->>Bus: PART_ARRIVED(part_id)
-    Bus->>Twin: PART_ARRIVED
-    Sim->>Bus: SENSOR_READ(part_id, result)
-    Bus->>Twin: SENSOR_READ
-    Sim->>Bus: ACTUATOR_TRIGGERED(part_id, decision)
-    Bus->>Twin: ACTUATOR_TRIGGERED
-    Sim->>Bus: PART_SORTED(part_id, outcome)
-    Bus->>Twin: PART_SORTED
-
-
-
-
-**Installation **
-
-git clone
+```bash
+git clone https://github.com/Waelalg/sorting-cell-digital-twin.git
 cd sorting-cell-digital-twin
 
 python3 -m venv .venv
-source .venv/bin/activate        # On Windows: .venv\Scripts\activate
-
+source .venv/bin/activate      # On Windows use .venv\Scripts\activate
 pip install -r requirements.txt
+```
 
+### Run simulation + twin (CLI mode)
 
-**Project Structure**
-
-sorting-cell-digital-twin/
-├── api/
-│   └── server.py           # FastAPI app (/state, /metrics, /parts)
-├── common/
-│   ├── config.py           # Load config.yaml → AppConfig
-│   ├── events.py           # Event + EventType definitions
-│   └── logging_config.py   # Central logging setup
-├── dashboard/
-│   └── index.html          # HTML/JS dashboard (polls /state, /metrics, /parts)
-├── physical_sim/
-│   └── cell_sim.py         # SortingCellSimulator (async CPPS simulation)
-├── twin_core/
-│   ├── event_bus.py        # Asynchronous event bus
-│   ├── state_model.py      # TwinState, Part, CellState, PartStatus
-│   └── twin.py             # DigitalTwin orchestration + locks
-├── config.yaml             # Simulation + Digital Twin thresholds
-├── main.py                 # CLI runner (sim + twin + console monitor)
-├── requirements.txt
-└── docs/
-    ├── architecture.md
-    ├── api.md
-    └── config.md
-
-
-**Running the CLI demo **
-
-This runs:
-    EventBus
-    SortingCellSimulator
-    DigitalTwin
-    A small monitor printing periodic snapshots
-
-source .venv/bin/activate
+```bash
 python main.py
+```
 
-Example output:
+You should see periodic monitor output like:
 
-[MONITOR] {'cell_state': 'running',
-           'total_processed': 42,
-           'total_rejected': 8,
-           'parts_in_system': 42,
-           'error': False}
+```
+[MONITOR] {'cell_state': 'running', 'total_processed': 42, 'total_rejected': 8, 'parts_in_system': 42, 'error': False}
+```
 
+### Run API + Dashboard
 
-**Running the API + Dashboard**
-1. Start the FastAPI server
-source .venv/bin/activate
+```bash
 uvicorn api.server:app --reload
-Available endpoints:
+```
 
-    GET /state → current state of the Digital Twin
-    GET /metrics → KPIs (throughput, reject rate, observation window)
-    GET /parts → list of parts with status & last timestamps
-    GET /docs → interactive Swagger UI
+Then open in browser:
 
-**Open the dashboard**
+```
+dashboard/index.html
+```
 
-xdg-open dashboard/index.html   # Linux
+Dashboard displays:
 
-The dashboard displays:
+- Cell state (IDLE / RUNNING / BLOCKED / ERROR)  
+- Total processed / rejected / parts in system  
+- Throughput (parts/s), reject rate %, processing window  
+- Table of recent parts (ID, status, last update)  
+- Health status & anomaly warnings  
 
-    Cell state (IDLE / RUNNING / BLOCKED / ERROR)
+---
 
-    Total processed / rejected / parts in system
+## 📂 Project Structure
 
-    Throughput (parts/s), reject rate (%), observation window (s)
+```
+sorting-cell-digital-twin/
+├── api/              # FastAPI endpoints
+├── common/           # shared config, events, logging  
+├── dashboard/        # HTML + JS dashboard  
+├── physical_sim/     # simulated sorting cell  
+├── twin_core/        # Digital Twin core logic  
+├── config.yaml       # simulation & twin parameters  
+├── main.py           # CLI demo runner  
+├── requirements.txt  # dependencies  
+└── docs/             # (optional) more detailed docs  
+```
 
-    Table of the latest parts (ID, status, last timestamp)
+---
 
-    Health summary (“No anomaly detected”, “BLOCKED”, “ERROR”)
+## 🧑‍💻 Core Concepts  
 
-Digital Twin Features
+- **DES-style Part Lifecycle**:  
+  CREATED → ON_CONVEYOR → AT_SENSOR → READY_TO_SORT → SORTED_OK / SORTED_NOK  
 
-    DES-style state model:
+- **Anomaly Detection**  
+  - `BLOCKED`: triggered when no events happen for more than `blocked_threshold` seconds  
+  - `ERROR`: triggered if an event sequence is invalid (e.g. PART_SORTED without prior sensor/actuator events)  
 
-        Part lifecycle:
-        CREATED → ON_CONVEYOR → AT_SENSOR → READY_TO_SORT → SORTED_OK / SORTED_NOK
+- **KPIs (via /metrics)**  
+  - `throughput` = processed parts / observation window  
+  - `reject_rate` = rejected parts / processed parts  
+  - `observation_window` = time since first event  
 
-    Anomaly detection:
+- **API endpoints**  
+  - `GET /state`  → high-level twin status  
+  - `GET /metrics` → performance KPIs  
+  - `GET /parts` → list of all parts with status & last timestamp  
 
-        BLOCKED: no events for more than blocked_threshold seconds
+---
 
-        ERROR: invalid event sequence (e.g. PART_SORTED without correct prior steps)
+## 🛠️ Configuration  
 
-    KPIs:
+All simulation parameters and twin thresholds are configurable in `config.yaml`:
 
-        throughput = total_processed / observation_window
-
-        reject_rate = total_rejected / total_processed
-
-        observation_window = last_event_time – system_start_time
-
-        See docs/architecture.md for a deeper technical description.
-
-**Configuration**   
-All timing and probabilities are defined in config.yaml:
-
+```yaml
 simulation:
-  part_interarrival: [0.5, 1.5]
-  sensor_delay: [0.1, 0.3]
-  actuator_delay: [0.1, 0.2]
-  ok_probability: 0.8
+  part_interarrival: [0.5, 1.5]   # seconds between new parts  
+  sensor_delay:       [0.1, 0.3]   # sensor processing delay  
+  actuator_delay:     [0.1, 0.2]   # actuator delay  
+  ok_probability:      0.8        # probability a part is accepted  
 
 twin:
-  blocked_threshold: 5.0
+  blocked_threshold:   5.0        # seconds before marking as BLOCKED  
+```
 
-The file is loaded by common/config.py and applied to:
+Adjust these values and rerun to model different load and system behaviors.
 
-    SortingCellSimulator (arrival rate, delays, OK probability)
+---
 
-    TwinState (blocked detection threshold)
+## 🎯 Possible Improvements / Future Work
+
+- Limit memory usage by keeping only last N parts (instead of storing all)  
+- Add pause/resume or speed-control endpoints for the simulator  
+- Export metrics to a time-series database (InfluxDB, Prometheus) + real-time monitoring (Grafana)  
+- Add unit tests covering twin logic and API endpoints  
+- Provide a full “report” + usage examples (e.g. high-load scenario, fault injection)  
+
+---
+
+## 🙋 Contact & Credits
+
+Created by **Waelalg**.  
+Feel free to open issues or PRs — feedback is welcome!  
