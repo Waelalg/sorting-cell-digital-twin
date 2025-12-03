@@ -3,7 +3,8 @@
 A **Digital Twin** of an automated sorting cell (conveyor → sensor → actuator → sorter), implemented in **Python + asyncio + FastAPI**, with a **live dashboard**.  
 This project simulates a Cyber-Physical Production System (CPPS), tracks state and KPIs, and exposes a clean REST API + UI for monitoring and analysis.
 
----
+---<img width="1842" height="974" alt="Screenshot From 2025-12-02 19-21-17" src="https://github.com/user-attachments/assets/31b89bb0-6b7f-44eb-a7f1-51c511e07c45" />
+
 
 ## ✅ Why this project matters
 
